@@ -151,6 +151,8 @@ export function simulateSchedule(
     let tempBalance = balance;
     let accumulatedInterest = 0;
     let unpaidInterest = 0;
+    let overpaymentInterestPaid = 0;
+    let overpaymentCapitalPaid = 0;
     let lastEventFraction = 0;
 
     const msDiff = currentDate.getTime() - prevDate.getTime();
@@ -170,10 +172,18 @@ export function simulateSchedule(
        if (ev.type === 'tranche') {
            tempBalance += ev.amount;
        } else if (ev.type === 'overpayment') {
-           let toInterest = Math.min(unpaidInterest, ev.amount);
-           unpaidInterest -= toInterest;
-           let toCapital = ev.amount - toInterest;
-           tempBalance -= toCapital;
+           if (fraction < 1) {
+               let toInterest = Math.min(unpaidInterest, ev.amount);
+               unpaidInterest -= toInterest;
+               let toCapital = ev.amount - toInterest;
+               tempBalance -= toCapital;
+
+               overpaymentInterestPaid += toInterest;
+               overpaymentCapitalPaid += toCapital;
+           } else {
+               tempBalance -= ev.amount;
+               overpaymentCapitalPaid += ev.amount;
+           }
        }
     });
 
@@ -189,54 +199,45 @@ export function simulateSchedule(
     let monthsRemaining = currentPlannedMonths - m + 1;
     if (monthsRemaining < 1) monthsRemaining = 1;
 
+    let theoreticalInterestFull = theoreticalBalance * monthlyRate;
+
     if (m <= gracePeriod) {
-      installment = interest;
       capitalPart = 0;
+      installment = unpaidInterest;
     } else {
       if (rateType === 'rowne') {
         if (monthlyRate === 0) installment = theoreticalBalance / monthsRemaining;
         else installment = (theoreticalBalance * monthlyRate) / (1 - Math.pow(1 + monthlyRate, -monthsRemaining));
-        capitalPart = installment - interest;
+        capitalPart = installment - theoreticalInterestFull;
+        if (capitalPart < 0) capitalPart = 0;
+        installment = capitalPart + unpaidInterest;
       } else {
         capitalPart = theoreticalBalance / monthsRemaining;
-        installment = capitalPart + interest;
+        installment = capitalPart + unpaidInterest;
       }
     }
 
     if (capitalPart < 0) capitalPart = 0;
-    
-    balance = theoreticalBalance;
 
-    let manualOver = oneTimeNominalThisMonth;
+    let monthEndOverpayment = 0;
 
     if (!ignoreOverpaymentsData) {
         if (overpayment.customData && overpayment.customData[m]) {
-            manualOver += overpayment.customData[m];
+            monthEndOverpayment += overpayment.customData[m];
         } else if (overpayment.intervalMonths > 0 && overpayment.amount > 0 && overpayment.startDate) {
             const startOverDate = new Date(overpayment.startDate);
             const offset = monthDiff(startDate, startOverDate);
             if (m > offset && (m - offset - 1) % overpayment.intervalMonths === 0) {
-                manualOver += overpayment.amount;
+                monthEndOverpayment += overpayment.amount;
             }
         }
     }
 
     if (overrideMonthlyOverpayment !== null) {
-      manualOver += overrideMonthlyOverpayment;
+      monthEndOverpayment += overrideMonthlyOverpayment;
     }
     if (overrideYearlyOverpayment !== null && m % 12 === 0) {
-      manualOver += overrideYearlyOverpayment;
-    }
-
-    let suggestedOver = 0;
-    if (!ignoreOverpaymentsData) {
-      let canUseDeclared = true;
-      const targetStart = overpayment.targetStartDate ? new Date(overpayment.targetStartDate) : null;
-      if (targetStart && currentDate < targetStart) canUseDeclared = false;
-
-      if (canUseDeclared && overpayment.targetInstallment > 0 && installment < overpayment.targetInstallment) {
-        suggestedOver = overpayment.targetInstallment - installment;
-      }
+      monthEndOverpayment += overrideYearlyOverpayment;
     }
 
     let additionalCostThisMonth = 0;
@@ -250,17 +251,35 @@ export function simulateSchedule(
       }
     }
 
-    let totalOver = manualOver + suggestedOver;
-    let capitalToReduce = capitalPart + totalOver;
+    let suggestedOver = 0;
+    if (!ignoreOverpaymentsData) {
+      let canUseDeclared = true;
+      const targetStart = overpayment.targetStartDate ? new Date(overpayment.targetStartDate) : null;
+      if (targetStart && currentDate < targetStart) canUseDeclared = false;
 
-    if (capitalToReduce > balance) {
-      capitalToReduce = balance;
+      if (canUseDeclared && overpayment.targetInstallment > 0) {
+        let currentTotalToPay = capitalPart + unpaidInterest + monthEndOverpayment + additionalCostThisMonth;
+        if (currentTotalToPay < overpayment.targetInstallment) {
+           suggestedOver = overpayment.targetInstallment - currentTotalToPay;
+        }
+      }
     }
 
-    let realPayment = interest + capitalToReduce + additionalCostThisMonth;
+    monthEndOverpayment += suggestedOver;
 
-    // Calculate real value based on inflation
-    // Value = Payment / ((1 + (inflationRate/100/12))^m)
+    let monthEndCapitalToReduce = capitalPart + monthEndOverpayment;
+    if (monthEndCapitalToReduce > tempBalance) {
+      monthEndCapitalToReduce = tempBalance;
+    }
+
+    balance = tempBalance - monthEndCapitalToReduce;
+
+    let totalCapitalReducedThisMonth = overpaymentCapitalPaid + monthEndCapitalToReduce;
+    let totalInterestPaidThisMonth = overpaymentInterestPaid + unpaidInterest;
+    let totalOverTotalNominal = oneTimeNominalThisMonth + monthEndOverpayment;
+
+    let realPayment = totalInterestPaidThisMonth + totalCapitalReducedThisMonth + additionalCostThisMonth;
+
     const monthlyInflation = inflationRate / 100 / 12;
     const realValueInstallment = realPayment / Math.pow(1 + monthlyInflation, m);
 
@@ -268,18 +287,17 @@ export function simulateSchedule(
       id: m,
       date: new Date(currentDate).toISOString(),
       installment: realPayment,
-      capital: capitalToReduce - totalOver,
-      interest: interest,
-      overpayment: totalOver,
+      capital: totalCapitalReducedThisMonth,
+      interest: totalInterestPaidThisMonth,
+      overpayment: totalOverTotalNominal,
       additionalCost: additionalCostThisMonth,
-      balance: balance - capitalToReduce,
+      balance: balance,
       realValueInstallment,
     });
 
-    balance -= capitalToReduce;
     totalPaid += realPayment;
-    totalInterest += interest;
-    totalOverpayments += totalOver;
+    totalInterest += totalInterestPaidThisMonth;
+    totalOverpayments += totalOverTotalNominal;
     totalAdditionalCosts += additionalCostThisMonth;
     m++;
     currentDate.setMonth(currentDate.getMonth() + 1);
