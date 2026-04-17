@@ -54,6 +54,7 @@ export function simulateSchedule(
       totalPaid: 0,
       totalInterest: 0,
       totalOverpayments: 0,
+      totalAdditionalCosts: 0,
       months: 0,
       totalLoanAmount: 0,
     };
@@ -76,19 +77,6 @@ export function simulateSchedule(
   let currentDate = new Date(startDate);
   currentDate.setMonth(currentDate.getMonth() + 1);
 
-  // Map one-time overpayments to exact months
-  let oneTimeMap: Record<number, number> = {};
-  if (!ignoreOverpaymentsData && params.oneTimeOverpayments) {
-      params.oneTimeOverpayments.forEach(ot => {
-          if (ot.amount > 0 && ot.date) {
-            const otDate = new Date(ot.date);
-            let diff = monthDiff(startDate, otDate) + 1;
-            if (diff < 1) diff = 1; // if past or same month, apply to month 1
-            oneTimeMap[diff] = (oneTimeMap[diff] || 0) + ot.amount;
-          }
-      });
-  }
-
   let m = 1;
   const maxSafety = plannedMonths + 400; // infinite loop protection
   let currentPlannedMonths = plannedMonths;
@@ -96,16 +84,55 @@ export function simulateSchedule(
   let refinActive = ignoreRefinance ? false : refinance.active;
 
   while (m < maxSafety) {
-    let addedBefore = 0;
+    let prevDate = new Date(startDate);
+    prevDate.setMonth(prevDate.getMonth() + m - 1);
+
+    let events: { type: 'tranche' | 'overpayment', date: Date, amount: number }[] = [];
+
     localTransze.forEach((t) => {
-      if (!t.added && t.date <= currentDate) {
-        balance += t.amount;
-        t.added = true;
-        addedBefore += t.amount;
+      if (!t.added) {
+        if (m === 1 && t.date <= currentDate) {
+          let evDate = t.date < prevDate ? prevDate : t.date;
+          events.push({ type: 'tranche', date: new Date(evDate), amount: t.amount });
+          t.added = true;
+        } else if (m > 1 && t.date > prevDate && t.date <= currentDate) {
+          events.push({ type: 'tranche', date: new Date(t.date), amount: t.amount });
+          t.added = true;
+        }
       }
     });
 
-    if (balance < 0.01 && localTransze.every((t) => t.added)) {
+    let oneTimeNominalThisMonth = 0;
+    if (m === 1 && firstMonthExtraAmount > 0) {
+        events.push({ type: 'overpayment', date: new Date(startDate), amount: firstMonthExtraAmount });
+        oneTimeNominalThisMonth += firstMonthExtraAmount;
+    }
+
+    if (!ignoreOverpaymentsData && params.oneTimeOverpayments) {
+      params.oneTimeOverpayments.forEach(ot => {
+        if (ot.amount > 0 && ot.date) {
+          const otDate = new Date(ot.date);
+          if (m === 1 && otDate <= currentDate) {
+            let evDate = otDate < prevDate ? prevDate : otDate;
+            events.push({ type: 'overpayment', date: new Date(evDate), amount: ot.amount });
+            oneTimeNominalThisMonth += ot.amount;
+          } else if (m > 1 && otDate > prevDate && otDate <= currentDate) {
+            events.push({ type: 'overpayment', date: new Date(otDate), amount: ot.amount });
+            oneTimeNominalThisMonth += ot.amount;
+          }
+        }
+      });
+    }
+
+    events.sort((a, b) => a.date.getTime() - b.date.getTime());
+
+    let theoreticalBalance = balance;
+    events.forEach(ev => {
+      if (ev.type === 'tranche') theoreticalBalance += ev.amount;
+    });
+
+    const hasFutureTranches = localTransze.some(t => !t.added);
+    if (theoreticalBalance < 0.01 && !hasFutureTranches) {
       break;
     }
 
@@ -120,7 +147,43 @@ export function simulateSchedule(
     }
 
     const monthlyRate = rateYearly / 100 / 12;
-    let interest = balance * monthlyRate;
+
+    let tempBalance = balance;
+    let accumulatedInterest = 0;
+    let unpaidInterest = 0;
+    let lastEventFraction = 0;
+
+    const msDiff = currentDate.getTime() - prevDate.getTime();
+
+    events.forEach(ev => {
+       let fraction = msDiff > 0 ? (ev.date.getTime() - prevDate.getTime()) / msDiff : 1;
+       if (fraction < 0) fraction = 0;
+       if (fraction > 1) fraction = 1;
+
+       let duration = fraction - lastEventFraction;
+       let accrued = tempBalance * monthlyRate * duration;
+       
+       accumulatedInterest += accrued;
+       unpaidInterest += accrued;
+       lastEventFraction = fraction;
+
+       if (ev.type === 'tranche') {
+           tempBalance += ev.amount;
+       } else if (ev.type === 'overpayment') {
+           let toInterest = Math.min(unpaidInterest, ev.amount);
+           unpaidInterest -= toInterest;
+           let toCapital = ev.amount - toInterest;
+           tempBalance -= toCapital;
+       }
+    });
+
+    let remainingDuration = 1 - lastEventFraction;
+    let accrued = tempBalance * monthlyRate * remainingDuration;
+    accumulatedInterest += accrued;
+    unpaidInterest += accrued;
+
+    let interest = accumulatedInterest;
+
     let capitalPart = 0;
     let installment = 0;
     let monthsRemaining = currentPlannedMonths - m + 1;
@@ -131,20 +194,22 @@ export function simulateSchedule(
       capitalPart = 0;
     } else {
       if (rateType === 'rowne') {
-        if (monthlyRate === 0) installment = balance / monthsRemaining;
-        else installment = (balance * monthlyRate) / (1 - Math.pow(1 + monthlyRate, -monthsRemaining));
+        if (monthlyRate === 0) installment = theoreticalBalance / monthsRemaining;
+        else installment = (theoreticalBalance * monthlyRate) / (1 - Math.pow(1 + monthlyRate, -monthsRemaining));
         capitalPart = installment - interest;
       } else {
-        capitalPart = balance / monthsRemaining;
+        capitalPart = theoreticalBalance / monthsRemaining;
         installment = capitalPart + interest;
       }
     }
 
     if (capitalPart < 0) capitalPart = 0;
+    
+    balance = theoreticalBalance;
 
-    let manualOver = 0;
+    let manualOver = oneTimeNominalThisMonth;
+
     if (!ignoreOverpaymentsData) {
-        // Evaluate cyclic and custom
         if (overpayment.customData && overpayment.customData[m]) {
             manualOver += overpayment.customData[m];
         } else if (overpayment.intervalMonths > 0 && overpayment.amount > 0 && overpayment.startDate) {
@@ -153,9 +218,6 @@ export function simulateSchedule(
             if (m > offset && (m - offset - 1) % overpayment.intervalMonths === 0) {
                 manualOver += overpayment.amount;
             }
-        }
-        if (oneTimeMap[m]) {
-            manualOver += oneTimeMap[m];
         }
     }
 
@@ -177,11 +239,6 @@ export function simulateSchedule(
       }
     }
 
-    if (m === 1) {
-        manualOver += firstMonthExtraAmount;
-    }
-
-    // Additional Costs Logic
     let additionalCostThisMonth = 0;
     if (m === 1) {
       additionalCostThisMonth += (params.additionalCosts?.initialFee || 0);
@@ -201,17 +258,6 @@ export function simulateSchedule(
     }
 
     let realPayment = interest + capitalToReduce + additionalCostThisMonth;
-
-    let addedAfter = 0;
-    let nextPaymentDate = new Date(currentDate);
-    nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 1);
-    localTransze.forEach((t) => {
-      if (!t.added && t.date > currentDate && t.date < nextPaymentDate) {
-        balance += t.amount;
-        t.added = true;
-        addedAfter += t.amount;
-      }
-    });
 
     // Calculate real value based on inflation
     // Value = Payment / ((1 + (inflationRate/100/12))^m)
