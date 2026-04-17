@@ -75,6 +75,19 @@ export function simulateSchedule(
   let currentDate = new Date(startDate);
   currentDate.setMonth(currentDate.getMonth() + 1);
 
+  // Map one-time overpayments to exact months
+  let oneTimeMap: Record<number, number> = {};
+  if (!ignoreOverpaymentsData && params.oneTimeOverpayments) {
+      params.oneTimeOverpayments.forEach(ot => {
+          if (ot.amount > 0 && ot.date) {
+            const otDate = new Date(ot.date);
+            let diff = monthDiff(startDate, otDate) + 1;
+            if (diff < 1) diff = 1; // if past or same month, apply to month 1
+            oneTimeMap[diff] = (oneTimeMap[diff] || 0) + ot.amount;
+          }
+      });
+  }
+
   let m = 1;
   const maxSafety = plannedMonths + 400; // infinite loop protection
   let currentPlannedMonths = plannedMonths;
@@ -139,6 +152,9 @@ export function simulateSchedule(
             if (m > offset && (m - offset - 1) % overpayment.intervalMonths === 0) {
                 manualOver += overpayment.amount;
             }
+        }
+        if (oneTimeMap[m]) {
+            manualOver += oneTimeMap[m];
         }
     }
 

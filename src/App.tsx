@@ -20,6 +20,7 @@ export default function App() {
   // Presets state
   const [presets, setPresets] = useState<Preset[]>([]);
   const [presetName, setPresetName] = useState<string>('');
+  const [activePresetId, setActivePresetId] = useState<string | null>(null);
 
   // Chart view template
   const [chartTemplate, setChartTemplate] = useState<'standard' | 'capital_interest' | 'inflation'>('standard');
@@ -40,20 +41,52 @@ export default function App() {
 
   const savePreset = () => {
     if (!presetName) return;
-    const newPresets = [...presets, { id: Date.now().toString(), name: presetName, params }];
+    const newId = Date.now().toString();
+    const newPresets = [...presets, { id: newId, name: presetName, params }];
     setPresets(newPresets);
     localStorage.setItem('loan_presets', JSON.stringify(newPresets));
+    setActivePresetId(newId);
     setPresetName('');
   };
 
-  const loadPreset = (presetParams: SimulationParams) => {
-    setParams(presetParams);
+  const updatePreset = () => {
+    if (!activePresetId) return;
+    const newPresets = presets.map(p => p.id === activePresetId ? { ...p, params } : p);
+    setPresets(newPresets);
+    localStorage.setItem('loan_presets', JSON.stringify(newPresets));
+  };
+
+  const loadPreset = (preset: Preset) => {
+    setParams(preset.params);
+    setActivePresetId(preset.id);
+    setPresetName(preset.name);
   };
 
   const deletePreset = (id: string) => {
     const newPresets = presets.filter(p => p.id !== id);
     setPresets(newPresets);
     localStorage.setItem('loan_presets', JSON.stringify(newPresets));
+    if (activePresetId === id) {
+      setActivePresetId(null);
+      setPresetName('');
+    }
+  };
+
+  const clearData = () => {
+    if (window.confirm('Czy na pewno chcesz usunąć wszystkie parametry z formularza?')) {
+      setParams({
+        ...defaultParams as SimulationParams,
+        loanAmount: 0,
+        firstMonthExtraAmount: 0,
+        interestRanges: [],
+        transzes: [],
+        oneTimeOverpayments: [],
+        overpayment: { type: 'cyclic' as any, intervalMonths: 0, amount: 0, startDate: '', customData: {}, targetInstallment: 0, targetStartDate: '' },
+        refinance: { active: false, month: 0, newRate: 0, newTermMonths: 0 }
+      });
+      setActivePresetId(null);
+      setPresetName('');
+    }
   };
 
   const handleParamChange = (field: keyof SimulationParams, value: any) => {
@@ -129,20 +162,28 @@ export default function App() {
             
             {/* Presets */}
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm transition-all hover:shadow-md">
-              <h3 className="text-lg font-bold border-b pb-3 mb-4 flex items-center gap-2"><FolderOpen className="w-5 h-5 text-teal-600"/> Szablony</h3>
+              <div className="flex justify-between items-center border-b pb-3 mb-4">
+                <h3 className="text-lg font-bold flex items-center gap-2 text-slate-800"><FolderOpen className="w-5 h-5 text-teal-600"/> Szablony / Menu</h3>
+                <button onClick={clearData} className="text-xs bg-red-50 text-red-600 hover:bg-red-100 font-bold px-3 py-1.5 rounded-lg transition-colors border border-red-100 shadow-sm">
+                  Wyczyść Formularz
+                </button>
+              </div>
               <div className="flex gap-2">
                 <input 
                   type="text" value={presetName} onChange={e => setPresetName(e.target.value)}
                   placeholder="Nazwa szablonu"
                   className="flex-1 px-4 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
                 />
-                <button onClick={savePreset} disabled={!presetName} className="bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg transition-colors"><Save className="w-4 h-4"/></button>
+                <button onClick={savePreset} disabled={!presetName} className="bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg transition-colors flex items-center gap-1 text-sm font-bold shadow-sm" title="Zapisz nowy"><Save className="w-4 h-4"/> Zapisz</button>
+                {activePresetId && (
+                  <button onClick={updatePreset} className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-bold shadow-sm disabled:opacity-50" title="Zaktualizuj wczytany szablon">Aktualizuj</button>
+                )}
               </div>
               {presets.length > 0 && (
                 <div className="mt-4 space-y-2">
                   {presets.map(p => (
-                    <div key={p.id} className="flex items-center justify-between bg-slate-50 hover:bg-slate-100 p-3 rounded-lg border text-sm transition-colors">
-                      <span className="font-semibold cursor-pointer text-slate-700" onClick={() => loadPreset(p.params)}>{p.name}</span>
+                    <div key={p.id} className={`flex items-center justify-between p-3 rounded-lg border text-sm transition-colors ${activePresetId === p.id ? 'bg-teal-50 border-teal-200 shadow-sm' : 'bg-slate-50 hover:bg-slate-100 border-slate-200'}`}>
+                      <span className={`font-semibold cursor-pointer flex-1 ${activePresetId === p.id ? 'text-teal-800' : 'text-slate-700'}`} onClick={() => loadPreset(p)}>{p.name} {activePresetId === p.id && '(Wczytany)'}</span>
                       <button onClick={() => deletePreset(p.id)} className="text-red-400 hover:text-red-600"><Trash2 className="w-4 h-4"/></button>
                     </div>
                   ))}
@@ -242,13 +283,39 @@ export default function App() {
             {/* Nadpłaty */}
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
               <h3 className="text-lg font-bold border-b pb-3 text-slate-800">3. Nadpłaty Kapitału</h3>
+
+              {/* Jednorazowe */}
+              <div className="pb-3 border-b border-slate-100">
+                <label className="block text-sm font-semibold mb-3 text-slate-700">Nadpłaty jednorazowe (w tym historyczne)</label>
+                {params.oneTimeOverpayments?.map((ot, i) => (
+                  <div key={ot.id} className="flex gap-2 mb-2 items-center">
+                    <input type="date" value={ot.date} onChange={e => {
+                      const mapped = [...(params.oneTimeOverpayments || [])]; mapped[i].date = e.target.value; handleParamChange('oneTimeOverpayments', mapped);
+                    }} className="flex-1 px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-teal-500" />
+                    <input type="number" placeholder="Kwota PLN" value={ot.amount || ''} onChange={e => {
+                      const mapped = [...(params.oneTimeOverpayments || [])]; mapped[i].amount = +e.target.value; handleParamChange('oneTimeOverpayments', mapped);
+                    }} className="w-32 px-3 py-1.5 border border-slate-300 rounded-lg text-sm font-medium outline-none focus:ring-1 focus:ring-teal-500" />
+                    <button onClick={() => {
+                        const mapped = [...(params.oneTimeOverpayments || [])]; mapped.splice(i,1); handleParamChange('oneTimeOverpayments', mapped);
+                    }} className="text-red-400 hover:text-red-600 p-1 bg-red-50 rounded-lg"><Trash2 className="w-4 h-4"/></button>
+                  </div>
+                ))}
+                <div className="flex gap-2 pt-2">
+                  <button onClick={() => handleParamChange('oneTimeOverpayments', [...(params.oneTimeOverpayments || []), {id: Date.now().toString(), date: params.startDate, amount: 10000}])} className="text-xs font-bold text-teal-600 hover:text-teal-700 flex items-center justify-center gap-1 px-3 py-2 bg-teal-50 rounded-lg transition-colors w-full border border-teal-100">
+                    <Plus className="w-4 h-4"/> Dodaj Nadpłatę Jednorazową
+                  </button>
+                </div>
+              </div>
+
+              {/* Cykliczne */}
+              <label className="block text-sm font-semibold mt-4 mb-2 text-slate-700">Nadpłaty cykliczne</label>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-semibold mb-1 text-slate-700">Kwota nadpłaty</label>
+                  <label className="block text-xs font-semibold mb-1 text-slate-500">Kwota nadpłaty (PLN)</label>
                   <input type="number" value={params.overpayment.amount} onChange={e => handleParamChange('overpayment', {...params.overpayment, amount: +e.target.value})} className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none transition-all" />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold mb-1 text-slate-700">Co ile m-cy</label>
+                  <label className="block text-xs font-semibold mb-1 text-slate-500">Co ile m-cy</label>
                   <input type="number" value={params.overpayment.intervalMonths} onChange={e => handleParamChange('overpayment', {...params.overpayment, intervalMonths: +e.target.value})} className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none transition-all" />
                 </div>
               </div>

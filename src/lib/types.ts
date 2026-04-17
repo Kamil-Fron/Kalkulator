@@ -25,6 +25,12 @@ export interface RefinanceOption {
   newTermMonths: number;
 }
 
+export interface OneTimeOverpayment {
+  id: string;
+  date: string;
+  amount: number;
+}
+
 export interface SimulationParams {
   loanAmount: number;
   termMonths: number;
@@ -37,6 +43,7 @@ export interface SimulationParams {
   overpayment: OverpaymentStrategy;
   refinance: RefinanceOption;
   inflationRate: number;
+  oneTimeOverpayments?: OneTimeOverpayment[];
 }
 
 export interface ScheduleRow {

@@ -32,4 +32,5 @@ export const defaultParams = {
     newTermMonths: 0,
   },
   inflationRate: 2.5, // 2.5% inflation parameter
+  oneTimeOverpayments: [],
 };
