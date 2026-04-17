@@ -25,6 +25,13 @@ export interface RefinanceOption {
   newTermMonths: number;
 }
 
+export interface AdditionalCosts {
+  initialFee: number;
+  insuranceFirstYear: number;
+  insuranceMonthly: number;
+  insuranceEndDate: string;
+}
+
 export interface OneTimeOverpayment {
   id: string;
   date: string;
@@ -42,6 +49,7 @@ export interface SimulationParams {
   transzes: Transza[];
   overpayment: OverpaymentStrategy;
   refinance: RefinanceOption;
+  additionalCosts: AdditionalCosts;
   inflationRate: number;
   oneTimeOverpayments?: OneTimeOverpayment[];
 }
@@ -49,10 +57,11 @@ export interface SimulationParams {
 export interface ScheduleRow {
   id: number;
   date: string;
-  installment: number;
+  installment: number; // without overpayment, but includes additionalCosts? No, total "Rata" usually includes custom logic, we'll keep realPayment.
   capital: number;
   interest: number;
   overpayment: number;
+  additionalCost: number; // New field
   balance: number;
   realValueInstallment: number;
 }
@@ -62,6 +71,7 @@ export interface SimulationResult {
   totalPaid: number;
   totalInterest: number;
   totalOverpayments: number;
+  totalAdditionalCosts: number; // New field
   months: number;
   totalLoanAmount: number;
 }

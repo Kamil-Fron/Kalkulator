@@ -256,9 +256,41 @@ export default function App() {
               </div>
             </div>
 
+            {/* Inne Koszty (Ubezpieczenia, Prowizje) */}
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+              <h3 className="text-lg font-bold border-b pb-3 text-slate-800">2. Koszty początkowe i Ubezpieczenie</h3>
+              
+              <div>
+                <label className="block text-sm font-semibold mb-1 text-slate-700">Koszty początkowe banku uiszczane "z góry" (PLN)</label>
+                <input type="number" value={params.additionalCosts?.initialFee || ''} onChange={e => handleParamChange('additionalCosts', {...params.additionalCosts, initialFee: +e.target.value})} placeholder="np. prowizja, notariusz" className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none transition-all text-sm" />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-semibold mb-1 text-slate-700">Ubezpieczenie (kwota jednorazowa za 1. rok w PLN)</label>
+                <input type="number" value={params.additionalCosts?.insuranceFirstYear || ''} onChange={e => handleParamChange('additionalCosts', {...params.additionalCosts, insuranceFirstYear: +e.target.value})} placeholder="np. 2000" className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none transition-all text-sm" />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 pb-2 border-b border-slate-100">
+                <div>
+                  <label className="block text-xs font-semibold mb-1 text-slate-500">Ubezpieczenie pomostowe/życie (miesięcznie po 1 r.)</label>
+                  <input type="number" value={params.additionalCosts?.insuranceMonthly || ''} onChange={e => handleParamChange('additionalCosts', {...params.additionalCosts, insuranceMonthly: +e.target.value})} className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none transition-all text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold mb-1 text-slate-500">Płatne miesięcznie DO (data)</label>
+                  <input type="date" value={params.additionalCosts?.insuranceEndDate || ''} onChange={e => handleParamChange('additionalCosts', {...params.additionalCosts, insuranceEndDate: e.target.value})} className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none transition-all text-sm" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold mb-1 text-slate-700">Jednorazowa wpłata/wkład umniejszający 1. kapitał</label>
+                <input type="number" value={params.firstMonthExtraAmount || ''} onChange={e => handleParamChange('firstMonthExtraAmount', +e.target.value)} placeholder="Dodatkowa wpłata wraz z uruchomieniem rat" className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none transition-all text-sm" />
+                <p className="text-xs text-slate-500 mt-2">Działa jak jednorazowe obniżenie kapitału początkowego tuż po wypłacie kredytu.</p>
+              </div>
+            </div>
+
             {/* Tranches */}
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-              <h3 className="text-lg font-bold border-b pb-3 text-slate-800">2. Transze (Wypłata w częściach)</h3>
+              <h3 className="text-lg font-bold border-b pb-3 text-slate-800">3. Transze (Wypłata w częściach)</h3>
               {params.transzes.map((t, i) => (
                 <div key={i} className="flex gap-2 mb-2 items-center">
                   <input type="date" value={t.date.split('T')[0]} onChange={e => {
@@ -282,7 +314,7 @@ export default function App() {
 
             {/* Nadpłaty */}
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
-              <h3 className="text-lg font-bold border-b pb-3 text-slate-800">3. Nadpłaty Kapitału</h3>
+              <h3 className="text-lg font-bold border-b pb-3 text-slate-800">4. Nadpłaty Kapitału</h3>
 
               {/* Jednorazowe */}
               <div className="pb-3 border-b border-slate-100">
@@ -336,7 +368,7 @@ export default function App() {
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
               <div className="flex items-center gap-3 border-b pb-3">
                 <input type="checkbox" checked={params.refinance.active} onChange={e => handleParamChange('refinance', {...params.refinance, active: e.target.checked})} className="w-5 h-5 text-teal-600 rounded border-slate-300" />
-                <h3 className="text-lg font-bold text-slate-800">4. Refinansowanie</h3>
+                <h3 className="text-lg font-bold text-slate-800">5. Refinansowanie</h3>
               </div>
               {params.refinance.active && (
                 <div className="grid grid-cols-2 gap-4 mt-3">
@@ -424,7 +456,7 @@ export default function App() {
 
             {/* Podsumowanie */}
             {simRes && (
-               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+               <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                   <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex flex-col items-center justify-center">
                     <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-2">Całkowity Koszt</p>
                     <p className="text-xl font-black text-slate-800">{formatMoney(simRes.totalPaid)}</p>
@@ -432,6 +464,10 @@ export default function App() {
                   <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex flex-col items-center justify-center">
                     <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-2">Suma Odsetek</p>
                     <p className="text-xl font-black text-rose-500">{formatMoney(simRes.totalInterest)}</p>
+                  </div>
+                  <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex flex-col items-center justify-center">
+                    <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-2 text-center text-nowrap whitespace-nowrap">Dodatkowe Koszty <br/><span className="text-[9px]">(Start, Prowizje, Ubezp.)</span></p>
+                    <p className="text-xl font-black text-orange-500">{formatMoney(simRes.totalAdditionalCosts)}</p>
                   </div>
                   <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex flex-col items-center justify-center">
                     <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-2">Suma Nadpłat</p>
@@ -526,6 +562,7 @@ export default function App() {
                        <th className="px-5 py-4 text-right">Kapitał</th>
                        <th className="px-5 py-4 text-right">Odsetki</th>
                        <th className="px-5 py-4 text-right">Nadpłata</th>
+                       <th className="px-5 py-4 text-right">Inne (Doliczone)</th>
                        <th className="px-5 py-4 text-right">Saldo</th>
                      </tr>
                    </thead>
@@ -538,6 +575,7 @@ export default function App() {
                          <td className="px-5 py-3 text-right text-emerald-600 font-medium">{formatMoney(r.capital)}</td>
                          <td className="px-5 py-3 text-right text-rose-500 font-medium">{formatMoney(r.interest)}</td>
                          <td className="px-5 py-3 text-right text-teal-600 font-medium">{formatMoney(r.overpayment)}</td>
+                         <td className="px-5 py-3 text-right text-orange-500 font-medium">{formatMoney(r.additionalCost)}</td>
                          <td className="px-5 py-3 text-right font-black text-slate-800">{formatMoney(r.balance)}</td>
                        </tr>
                      ))}
@@ -556,4 +594,3 @@ export default function App() {
     </div>
   );
 }
-

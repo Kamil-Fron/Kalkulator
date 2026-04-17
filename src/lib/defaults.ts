@@ -25,6 +25,12 @@ export const defaultParams = {
     targetInstallment: 0,
     targetStartDate: '',
   },
+  additionalCosts: {
+    initialFee: 0,
+    insuranceFirstYear: 0,
+    insuranceMonthly: 0,
+    insuranceEndDate: '',
+  },
   refinance: {
     active: false,
     month: 60,

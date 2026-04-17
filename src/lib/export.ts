@@ -7,10 +7,10 @@ export function exportToCsv(sim: SimulationResult, filename: string = 'harmonogr
 
   const f = (n: number) => n.toFixed(2).replace('.', ',');
 
-  let csv = 'Lp;Data;Rata Całkowita;Kapitał;Odsetki;Nadpłata;Saldo;Wartość Realna (po inflacji)\n';
+  let csv = 'Lp;Data;Rata Całkowita;Kapitał;Odsetki;Nadpłata;Koszty/Ubezpieczenie;Saldo;Wartość Realna (po inflacji)\n';
   sim.schedule.forEach((r) => {
     const d = new Date(r.date).toLocaleDateString('pl-PL');
-    csv += `${r.id};${d};${f(r.installment)};${f(r.capital)};${f(r.interest)};${f(r.overpayment)};${f(r.balance)};${f(r.realValueInstallment)}\n`;
+    csv += `${r.id};${d};${f(r.installment)};${f(r.capital)};${f(r.interest)};${f(r.overpayment)};${f(r.additionalCost)};${f(r.balance)};${f(r.realValueInstallment)}\n`;
   });
 
   // Adding BOM for Excel
@@ -32,10 +32,11 @@ export function exportToPdf(sim: SimulationResult, filename: string = 'raport_kr
   doc.text('Raport Symulacji Kredytu', 14, 20);
 
   doc.setFontSize(11);
-  doc.text(`Całkowity koszt: ${f(sim.totalPaid)} PLN`, 14, 30);
+  doc.text(`Całkowity koszt (z ubezpieczeniami): ${f(sim.totalPaid)} PLN`, 14, 30);
   doc.text(`Suma odsetek: ${f(sim.totalInterest)} PLN`, 14, 37);
-  doc.text(`Suma nadpłat: ${f(sim.totalOverpayments)} PLN`, 14, 44);
-  doc.text(`Liczba rat: ${sim.months}`, 14, 51);
+  doc.text(`Suma kosztów startowych / ubezpieczeń: ${f(sim.totalAdditionalCosts)} PLN`, 14, 44);
+  doc.text(`Suma nadpłat: ${f(sim.totalOverpayments)} PLN`, 14, 51);
+  doc.text(`Liczba rat: ${sim.months}`, 14, 58);
 
   const tableData = sim.schedule.map((r) => [
     r.id,
@@ -44,12 +45,13 @@ export function exportToPdf(sim: SimulationResult, filename: string = 'raport_kr
     f(r.capital),
     f(r.interest),
     f(r.overpayment),
+    f(r.additionalCost),
     f(r.balance),
   ]);
 
   autoTable(doc, {
-    startY: 60,
-    head: [['Lp.', 'Data', 'Rata', 'Kapitał', 'Odsetki', 'Nadpłata', 'Saldo']],
+    startY: 65,
+    head: [['Lp.', 'Data', 'Rata', 'Kapitał', 'Odsetki', 'Nadpłata', 'Inne', 'Saldo']],
     body: tableData,
     styles: { fontSize: 8 },
     headStyles: { fillColor: [15, 23, 42] }, // tailwind slate-900

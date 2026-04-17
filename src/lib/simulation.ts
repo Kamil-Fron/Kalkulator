@@ -72,6 +72,7 @@ export function simulateSchedule(
   let totalPaid = 0;
   let totalOverpayments = 0;
   let totalInterest = 0;
+  let totalAdditionalCosts = 0;
   let currentDate = new Date(startDate);
   currentDate.setMonth(currentDate.getMonth() + 1);
 
@@ -180,6 +181,18 @@ export function simulateSchedule(
         manualOver += firstMonthExtraAmount;
     }
 
+    // Additional Costs Logic
+    let additionalCostThisMonth = 0;
+    if (m === 1) {
+      additionalCostThisMonth += (params.additionalCosts?.initialFee || 0);
+      additionalCostThisMonth += (params.additionalCosts?.insuranceFirstYear || 0);
+    } else if (params.additionalCosts?.insuranceMonthly > 0 && params.additionalCosts?.insuranceEndDate) {
+      const insEndDate = new Date(params.additionalCosts.insuranceEndDate);
+      if (currentDate <= insEndDate) {
+        additionalCostThisMonth += params.additionalCosts.insuranceMonthly;
+      }
+    }
+
     let totalOver = manualOver + suggestedOver;
     let capitalToReduce = capitalPart + totalOver;
 
@@ -187,7 +200,7 @@ export function simulateSchedule(
       capitalToReduce = balance;
     }
 
-    let realPayment = interest + capitalToReduce;
+    let realPayment = interest + capitalToReduce + additionalCostThisMonth;
 
     let addedAfter = 0;
     let nextPaymentDate = new Date(currentDate);
@@ -212,6 +225,7 @@ export function simulateSchedule(
       capital: capitalToReduce - totalOver,
       interest: interest,
       overpayment: totalOver,
+      additionalCost: additionalCostThisMonth,
       balance: balance - capitalToReduce,
       realValueInstallment,
     });
@@ -220,6 +234,7 @@ export function simulateSchedule(
     totalPaid += realPayment;
     totalInterest += interest;
     totalOverpayments += totalOver;
+    totalAdditionalCosts += additionalCostThisMonth;
     m++;
     currentDate.setMonth(currentDate.getMonth() + 1);
   }
@@ -231,6 +246,7 @@ export function simulateSchedule(
     totalPaid,
     totalInterest,
     totalOverpayments,
+    totalAdditionalCosts,
     months: schedule.length,
     totalLoanAmount: loanAmt,
   };
