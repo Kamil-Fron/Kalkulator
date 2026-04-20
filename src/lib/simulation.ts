@@ -6,6 +6,17 @@ function monthDiff(d1: Date, d2: Date): number {
   return y * 12 + m + (d2.getDate() < d1.getDate() ? -1 : 0);
 }
 
+function getBusinessDay(date: Date): Date {
+  const d = new Date(date);
+  const day = d.getDay();
+  if (day === 6) { // Saturday
+    d.setDate(d.getDate() + 2);
+  } else if (day === 0) { // Sunday
+    d.setDate(d.getDate() + 1);
+  }
+  return d;
+}
+
 function getMonthlyInterestRate(month: number, ranges: SimulationParams['interestRanges']): number {
   let foundRate = 0;
   let lastRate = 0;
@@ -87,15 +98,18 @@ export function simulateSchedule(
     let prevDate = new Date(startDate);
     prevDate.setMonth(prevDate.getMonth() + m - 1);
 
+    let actualPrevDate = getBusinessDay(prevDate);
+    let actualCurrentDate = getBusinessDay(currentDate);
+
     let events: { type: 'tranche' | 'overpayment', date: Date, amount: number }[] = [];
 
     localTransze.forEach((t) => {
       if (!t.added) {
-        if (m === 1 && t.date <= currentDate) {
-          let evDate = t.date < prevDate ? prevDate : t.date;
+        if (m === 1 && t.date <= actualCurrentDate) {
+          let evDate = t.date < actualPrevDate ? actualPrevDate : t.date;
           events.push({ type: 'tranche', date: new Date(evDate), amount: t.amount });
           t.added = true;
-        } else if (m > 1 && t.date > prevDate && t.date <= currentDate) {
+        } else if (m > 1 && t.date > actualPrevDate && t.date <= actualCurrentDate) {
           events.push({ type: 'tranche', date: new Date(t.date), amount: t.amount });
           t.added = true;
         }
@@ -104,7 +118,7 @@ export function simulateSchedule(
 
     let oneTimeNominalThisMonth = 0;
     if (m === 1 && firstMonthExtraAmount > 0) {
-        events.push({ type: 'overpayment', date: new Date(startDate), amount: firstMonthExtraAmount });
+        events.push({ type: 'overpayment', date: new Date(actualPrevDate), amount: firstMonthExtraAmount });
         oneTimeNominalThisMonth += firstMonthExtraAmount;
     }
 
@@ -112,12 +126,13 @@ export function simulateSchedule(
       params.oneTimeOverpayments.forEach(ot => {
         if (ot.amount > 0 && ot.date) {
           const otDate = new Date(ot.date);
-          if (m === 1 && otDate <= currentDate) {
-            let evDate = otDate < prevDate ? prevDate : otDate;
+          const businessOtDate = getBusinessDay(otDate);
+          if (m === 1 && businessOtDate <= actualCurrentDate) {
+            let evDate = businessOtDate < actualPrevDate ? actualPrevDate : businessOtDate;
             events.push({ type: 'overpayment', date: new Date(evDate), amount: ot.amount });
             oneTimeNominalThisMonth += ot.amount;
-          } else if (m > 1 && otDate > prevDate && otDate <= currentDate) {
-            events.push({ type: 'overpayment', date: new Date(otDate), amount: ot.amount });
+          } else if (m > 1 && businessOtDate > actualPrevDate && businessOtDate <= actualCurrentDate) {
+            events.push({ type: 'overpayment', date: new Date(businessOtDate), amount: ot.amount });
             oneTimeNominalThisMonth += ot.amount;
           }
         }
@@ -155,10 +170,10 @@ export function simulateSchedule(
     let overpaymentCapitalPaid = 0;
     let lastEventFraction = 0;
 
-    const msDiff = currentDate.getTime() - prevDate.getTime();
+    const msDiff = actualCurrentDate.getTime() - actualPrevDate.getTime();
 
     events.forEach(ev => {
-       let fraction = msDiff > 0 ? (ev.date.getTime() - prevDate.getTime()) / msDiff : 1;
+       let fraction = msDiff > 0 ? (ev.date.getTime() - actualPrevDate.getTime()) / msDiff : 1;
        if (fraction < 0) fraction = 0;
        if (fraction > 1) fraction = 1;
 
