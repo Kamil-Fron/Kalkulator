@@ -56,7 +56,7 @@ export interface SimulationParams {
 
 export interface ScheduleRow {
   id: number | string;
-  type: 'installment' | 'overpayment';
+  type: 'installment' | 'overpayment' | 'initial_contribution';
   date: string;
   installment: number; 
   capital: number;

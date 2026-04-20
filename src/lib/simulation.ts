@@ -101,7 +101,7 @@ export function simulateSchedule(
     let actualPrevDate = getBusinessDay(prevDate);
     let actualCurrentDate = getBusinessDay(currentDate);
 
-    let events: { type: 'tranche' | 'overpayment', date: Date, amount: number }[] = [];
+    let events: { type: 'tranche' | 'overpayment' | 'initial_contribution', date: Date, amount: number }[] = [];
 
     localTransze.forEach((t) => {
       if (!t.added) {
@@ -118,8 +118,7 @@ export function simulateSchedule(
 
     let oneTimeNominalThisMonth = 0;
     if (m === 1 && firstMonthExtraAmount > 0) {
-        events.push({ type: 'overpayment', date: new Date(actualPrevDate), amount: firstMonthExtraAmount });
-        oneTimeNominalThisMonth += firstMonthExtraAmount;
+        events.push({ type: 'initial_contribution', date: new Date(actualPrevDate), amount: firstMonthExtraAmount });
     }
 
     if (!ignoreOverpaymentsData && params.oneTimeOverpayments) {
@@ -188,7 +187,7 @@ export function simulateSchedule(
 
        if (ev.type === 'tranche') {
            tempBalance += ev.amount;
-       } else if (ev.type === 'overpayment') {
+       } else if (ev.type === 'overpayment' || ev.type === 'initial_contribution') {
            let toInterest = 0;
            let toCapital = 0;
 
@@ -203,13 +202,13 @@ export function simulateSchedule(
            }
 
            schedule.push({
-               id: `${m}N`,
-               type: 'overpayment',
+               id: ev.type === 'initial_contribution' ? 'Start' : `${m}N`,
+               type: ev.type,
                date: new Date(ev.date).toISOString(),
                installment: 0,
                capital: toCapital,
                interest: toInterest,
-               overpayment: ev.amount,
+               overpayment: ev.type === 'initial_contribution' ? 0 : ev.amount,
                additionalCost: 0,
                balance: tempBalance,
                realValueInstallment: ev.amount / Math.pow(1 + monthlyInflation, m)
@@ -217,7 +216,9 @@ export function simulateSchedule(
            
            totalPaid += ev.amount;
            totalInterest += toInterest;
-           totalOverpayments += ev.amount;
+           if (ev.type === 'overpayment') {
+               totalOverpayments += ev.amount;
+           }
        }
     });
 
@@ -278,7 +279,9 @@ export function simulateSchedule(
     if (m === 1) {
       additionalCostThisMonth += (params.additionalCosts?.initialFee || 0);
       additionalCostThisMonth += (params.additionalCosts?.insuranceFirstYear || 0);
-    } else if (params.additionalCosts?.insuranceMonthly > 0 && params.additionalCosts?.insuranceEndDate) {
+    } 
+    
+    if (m > 12 && params.additionalCosts?.insuranceMonthly > 0 && params.additionalCosts?.insuranceEndDate) {
       const insEndDate = new Date(params.additionalCosts.insuranceEndDate);
       if (currentDate <= insEndDate) {
         additionalCostThisMonth += params.additionalCosts.insuranceMonthly;

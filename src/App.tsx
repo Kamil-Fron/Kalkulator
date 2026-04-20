@@ -134,12 +134,18 @@ export default function App() {
   }, [simRes, analysisDate]);
 
   const progressData = useMemo(() => {
-    if (!simRes) return { paidCap: 0, paidInt: 0, remaining: 0, currentInstallment: 0 };
+    if (!simRes) return { paidCap: 0, paidInt: 0, remaining: 0, currentInstallment: 0, installmentCount: 0 };
     let pc = 0, pi = 0;
+    let installCount = 0;
+    
     for (let i = 0; i < currentMonthIdx && i < simRes.schedule.length; i++) {
-      pc += (simRes.schedule[i].capital + simRes.schedule[i].overpayment);
-      pi += simRes.schedule[i].interest;
+        pc += simRes.schedule[i].capital;
+        pi += simRes.schedule[i].interest;
+        if (simRes.schedule[i].type === 'installment') {
+            installCount++;
+        }
     }
+
     const rem = currentMonthIdx > 0 && currentMonthIdx <= simRes.schedule.length 
       ? simRes.schedule[currentMonthIdx - 1].balance : simRes.totalLoanAmount;
     
@@ -151,7 +157,7 @@ export default function App() {
         if (nextInstRow) fallbackInst = nextInstRow.installment;
     }
 
-    return { paidCap: pc, paidInt: pi, remaining: rem, currentInstallment: fallbackInst };
+    return { paidCap: pc, paidInt: pi, remaining: rem, currentInstallment: fallbackInst, installmentCount: installCount };
   }, [simRes, currentMonthIdx]);
 
   const pcPercent = simRes && simRes.totalLoanAmount > 0 ? (progressData.paidCap / simRes.totalLoanAmount) * 100 : 0;
@@ -412,7 +418,7 @@ export default function App() {
                   </div>
                   <div className="bg-white/60 px-5 py-3 rounded-xl border border-teal-200/50 backdrop-blur-sm self-stretch md:self-auto flex flex-col justify-center">
                     <p className="text-xs text-teal-800 font-bold uppercase tracking-wider mb-1">Rata na ten dzień nr:</p>
-                    <p className="text-4xl font-black text-teal-900">{currentMonthIdx}</p>
+                    <p className="text-4xl font-black text-teal-900">{progressData.installmentCount}</p>
                   </div>
                 </div>
                 
@@ -576,15 +582,15 @@ export default function App() {
                    </thead>
                    <tbody>
                      {simRes?.schedule.map((r, i) => (
-                       <tr key={`${r.id}-${i}`} className={`border-b border-slate-100 ${r.type === 'overpayment' ? 'bg-teal-50/60' : i % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'} hover:bg-slate-100/50 transition-colors ${r.id === currentMonthIdx ? 'bg-amber-50 border-amber-200 border-y-2 relative' : ''}`}>
+                       <tr key={`${r.id}-${i}`} className={`border-b border-slate-100 ${r.type === 'overpayment' ? 'bg-teal-50/60' : r.type === 'initial_contribution' ? 'bg-blue-50/60' : i % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'} hover:bg-slate-100/50 transition-colors ${i === currentMonthIdx || r.id === currentMonthIdx ? 'bg-amber-50 border-amber-200 border-y-2 relative' : ''}`}>
                          <td className="px-5 py-3 text-slate-500 font-medium">
-                            {r.type === 'overpayment' ? 'Nadpłata' : r.id}
+                            {r.type === 'overpayment' ? 'Nadpłata' : r.type === 'initial_contribution' ? 'Wkład / Start' : r.id}
                          </td>
                          <td className="px-5 py-3 text-slate-600">{(new Date(r.date)).toLocaleDateString('pl-PL')}</td>
-                         <td className="px-5 py-3 text-right font-bold text-slate-800">{r.type === 'overpayment' ? '-' : formatMoney(r.installment)}</td>
+                         <td className="px-5 py-3 text-right font-bold text-slate-800">{r.type !== 'installment' ? '-' : formatMoney(r.installment)}</td>
                          <td className="px-5 py-3 text-right text-emerald-600 font-medium">{formatMoney(r.capital)}</td>
                          <td className="px-5 py-3 text-right text-rose-500 font-medium">{formatMoney(r.interest)}</td>
-                         <td className="px-5 py-3 text-right text-teal-600 font-medium">{formatMoney(r.overpayment)}</td>
+                         <td className="px-5 py-3 text-right text-teal-600 font-medium">{r.type === 'initial_contribution' ? '-' : formatMoney(r.overpayment)}</td>
                          <td className="px-5 py-3 text-right text-orange-500 font-medium">{formatMoney(r.additionalCost)}</td>
                          <td className="px-5 py-3 text-right font-black text-slate-800">{formatMoney(r.balance)}</td>
                        </tr>
