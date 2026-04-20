@@ -186,18 +186,10 @@ export function simulateSchedule(
        if (ev.type === 'tranche') {
            tempBalance += ev.amount;
        } else if (ev.type === 'overpayment' || ev.type === 'initial_contribution') {
-           let toInterest = 0;
-           let toCapital = 0;
-
-           if (actualCurrentDate.getTime() > ev.date.getTime()) {
-               toInterest = Math.min(unpaidInterest, ev.amount);
-               unpaidInterest -= toInterest;
-               toCapital = ev.amount - toInterest;
-               tempBalance -= toCapital;
-           } else {
-               toCapital = ev.amount;
-               tempBalance -= toCapital;
-           }
+           let toInterest = Math.min(unpaidInterest, ev.amount);
+           unpaidInterest -= toInterest;
+           let toCapital = ev.amount - toInterest;
+           tempBalance -= toCapital;
 
            schedule.push({
                id: ev.type === 'initial_contribution' ? 'Start' : `${m}N`,
