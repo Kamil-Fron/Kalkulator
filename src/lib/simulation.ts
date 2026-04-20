@@ -160,30 +160,28 @@ export function simulateSchedule(
       rateYearly = getMonthlyInterestRate(m, interestRanges) * 12 * 100;
     }
 
-    const monthlyRate = rateYearly / 100 / 12;
+    const monthlyRateForAnnuity = rateYearly / 100 / 12;
 
     let tempBalance = balance;
     let accumulatedInterest = 0;
     let unpaidInterest = 0;
     let overpaymentInterestPaid = 0;
     let overpaymentCapitalPaid = 0;
-    let lastEventFraction = 0;
+
+    let lastEventDate = new Date(actualPrevDate);
 
     const msDiff = actualCurrentDate.getTime() - actualPrevDate.getTime();
 
     const monthlyInflation = inflationRate / 100 / 12;
 
     events.forEach(ev => {
-       let fraction = msDiff > 0 ? (ev.date.getTime() - actualPrevDate.getTime()) / msDiff : 1;
-       if (fraction < 0) fraction = 0;
-       if (fraction > 1) fraction = 1;
-
-       let duration = fraction - lastEventFraction;
-       let accrued = tempBalance * monthlyRate * duration;
+       let evMsDiff = ev.date.getTime() - lastEventDate.getTime();
+       let days = evMsDiff > 0 ? Math.round(evMsDiff / 86400000) : 0;
+       let accrued = tempBalance * (rateYearly / 100) / 365 * days;
        
        accumulatedInterest += accrued;
        unpaidInterest += accrued;
-       lastEventFraction = fraction;
+       lastEventDate = new Date(ev.date);
 
        if (ev.type === 'tranche') {
            tempBalance += ev.amount;
@@ -191,7 +189,7 @@ export function simulateSchedule(
            let toInterest = 0;
            let toCapital = 0;
 
-           if (fraction < 1) {
+           if (actualCurrentDate.getTime() > ev.date.getTime()) {
                toInterest = Math.min(unpaidInterest, ev.amount);
                unpaidInterest -= toInterest;
                toCapital = ev.amount - toInterest;
@@ -222,8 +220,10 @@ export function simulateSchedule(
        }
     });
 
-    let remainingDuration = 1 - lastEventFraction;
-    let accrued = tempBalance * monthlyRate * remainingDuration;
+    let remMsDiff = actualCurrentDate.getTime() - lastEventDate.getTime();
+    let remDays = remMsDiff > 0 ? Math.round(remMsDiff / 86400000) : 0;
+    let accrued = tempBalance * (rateYearly / 100) / 365 * remDays;
+    
     accumulatedInterest += accrued;
     unpaidInterest += accrued;
 
@@ -234,15 +234,18 @@ export function simulateSchedule(
     let monthsRemaining = currentPlannedMonths - m + 1;
     if (monthsRemaining < 1) monthsRemaining = 1;
 
-    let theoreticalInterestFull = theoreticalBalance * monthlyRate;
+    let theoreticalInterestFull = theoreticalBalance * monthlyRateForAnnuity;
 
     if (m <= gracePeriod) {
       capitalPart = 0;
       installment = unpaidInterest;
     } else {
       if (rateType === 'rowne') {
-        if (monthlyRate === 0) installment = theoreticalBalance / monthsRemaining;
-        else installment = (theoreticalBalance * monthlyRate) / (1 - Math.pow(1 + monthlyRate, -monthsRemaining));
+        if (monthlyRateForAnnuity === 0) {
+            installment = theoreticalBalance / monthsRemaining;
+        } else {
+            installment = (theoreticalBalance * monthlyRateForAnnuity) / (1 - Math.pow(1 + monthlyRateForAnnuity, -monthsRemaining));
+        }
         capitalPart = installment - theoreticalInterestFull;
         if (capitalPart < 0) capitalPart = 0;
         installment = capitalPart + unpaidInterest;
