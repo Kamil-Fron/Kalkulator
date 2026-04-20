@@ -55,13 +55,14 @@ export interface SimulationParams {
 }
 
 export interface ScheduleRow {
-  id: number;
+  id: number | string;
+  type: 'installment' | 'overpayment';
   date: string;
-  installment: number; // without overpayment, but includes additionalCosts? No, total "Rata" usually includes custom logic, we'll keep realPayment.
+  installment: number; 
   capital: number;
   interest: number;
   overpayment: number;
-  additionalCost: number; // New field
+  additionalCost: number; 
   balance: number;
   realValueInstallment: number;
 }

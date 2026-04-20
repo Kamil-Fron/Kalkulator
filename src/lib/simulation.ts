@@ -172,6 +172,8 @@ export function simulateSchedule(
 
     const msDiff = actualCurrentDate.getTime() - actualPrevDate.getTime();
 
+    const monthlyInflation = inflationRate / 100 / 12;
+
     events.forEach(ev => {
        let fraction = msDiff > 0 ? (ev.date.getTime() - actualPrevDate.getTime()) / msDiff : 1;
        if (fraction < 0) fraction = 0;
@@ -187,18 +189,35 @@ export function simulateSchedule(
        if (ev.type === 'tranche') {
            tempBalance += ev.amount;
        } else if (ev.type === 'overpayment') {
-           if (fraction < 1) {
-               let toInterest = Math.min(unpaidInterest, ev.amount);
-               unpaidInterest -= toInterest;
-               let toCapital = ev.amount - toInterest;
-               tempBalance -= toCapital;
+           let toInterest = 0;
+           let toCapital = 0;
 
-               overpaymentInterestPaid += toInterest;
-               overpaymentCapitalPaid += toCapital;
+           if (fraction < 1) {
+               toInterest = Math.min(unpaidInterest, ev.amount);
+               unpaidInterest -= toInterest;
+               toCapital = ev.amount - toInterest;
+               tempBalance -= toCapital;
            } else {
-               tempBalance -= ev.amount;
-               overpaymentCapitalPaid += ev.amount;
+               toCapital = ev.amount;
+               tempBalance -= toCapital;
            }
+
+           schedule.push({
+               id: `${m}N`,
+               type: 'overpayment',
+               date: new Date(ev.date).toISOString(),
+               installment: 0,
+               capital: toCapital,
+               interest: toInterest,
+               overpayment: ev.amount,
+               additionalCost: 0,
+               balance: tempBalance,
+               realValueInstallment: ev.amount / Math.pow(1 + monthlyInflation, m)
+           });
+           
+           totalPaid += ev.amount;
+           totalInterest += toInterest;
+           totalOverpayments += ev.amount;
        }
     });
 
@@ -282,37 +301,38 @@ export function simulateSchedule(
 
     monthEndOverpayment += suggestedOver;
 
-    let monthEndCapitalToReduce = capitalPart + monthEndOverpayment;
-    if (monthEndCapitalToReduce > tempBalance) {
-      monthEndCapitalToReduce = tempBalance;
+    let totalOver = monthEndOverpayment;
+    let capitalToReduce = capitalPart + totalOver;
+
+    if (capitalToReduce > tempBalance) {
+      capitalToReduce = tempBalance;
     }
 
-    balance = tempBalance - monthEndCapitalToReduce;
+    balance = tempBalance - capitalToReduce;
 
-    let totalCapitalReducedThisMonth = overpaymentCapitalPaid + monthEndCapitalToReduce;
-    let totalInterestPaidThisMonth = overpaymentInterestPaid + unpaidInterest;
-    let totalOverTotalNominal = oneTimeNominalThisMonth + monthEndOverpayment;
+    let totalCapitalReducedThisMonth = capitalToReduce;
+    let totalInterestPaidThisMonth = unpaidInterest;
 
-    let realPayment = totalInterestPaidThisMonth + totalCapitalReducedThisMonth + additionalCostThisMonth;
+    let bankInstallment = capitalPart + unpaidInterest + additionalCostThisMonth;
 
-    const monthlyInflation = inflationRate / 100 / 12;
-    const realValueInstallment = realPayment / Math.pow(1 + monthlyInflation, m);
+    const realValueInstallment = bankInstallment / Math.pow(1 + monthlyInflation, m);
 
     schedule.push({
       id: m,
+      type: 'installment',
       date: new Date(currentDate).toISOString(),
-      installment: realPayment,
+      installment: bankInstallment,
       capital: totalCapitalReducedThisMonth,
       interest: totalInterestPaidThisMonth,
-      overpayment: totalOverTotalNominal,
+      overpayment: totalOver,
       additionalCost: additionalCostThisMonth,
       balance: balance,
       realValueInstallment,
     });
 
-    totalPaid += realPayment;
+    totalPaid += bankInstallment + totalOver;
     totalInterest += totalInterestPaidThisMonth;
-    totalOverpayments += totalOverTotalNominal;
+    totalOverpayments += totalOver;
     totalAdditionalCosts += additionalCostThisMonth;
     m++;
     currentDate.setMonth(currentDate.getMonth() + 1);

@@ -129,21 +129,29 @@ export default function App() {
   const currentMonthIdx = useMemo(() => {
     if (!simRes) return 0;
     const d = new Date(analysisDate);
-    const idx = simRes.schedule.findIndex(s => new Date(s.date) >= d);
+    const idx = simRes.schedule.findIndex(s => new Date(s.date) >= d && s.type === 'installment');
     return idx === -1 ? simRes.schedule.length : idx;
   }, [simRes, analysisDate]);
 
   const progressData = useMemo(() => {
     if (!simRes) return { paidCap: 0, paidInt: 0, remaining: 0, currentInstallment: 0 };
     let pc = 0, pi = 0;
-    for (let i = 0; i < currentMonthIdx; i++) {
+    for (let i = 0; i < currentMonthIdx && i < simRes.schedule.length; i++) {
       pc += (simRes.schedule[i].capital + simRes.schedule[i].overpayment);
       pi += simRes.schedule[i].interest;
     }
     const rem = currentMonthIdx > 0 && currentMonthIdx <= simRes.schedule.length 
       ? simRes.schedule[currentMonthIdx - 1].balance : simRes.totalLoanAmount;
-    const inst = currentMonthIdx < simRes.schedule.length ? simRes.schedule[currentMonthIdx].installment : 0;
-    return { paidCap: pc, paidInt: pi, remaining: rem, currentInstallment: inst };
+    
+    // Find the current installment row directly if we point to an overpayment row
+    let instRow = currentMonthIdx < simRes.schedule.length ? simRes.schedule[currentMonthIdx] : null;
+    let fallbackInst = instRow && instRow.type === 'installment' ? instRow.installment : 0;
+    if (instRow && instRow.type !== 'installment') {
+        const nextInstRow = simRes.schedule.slice(currentMonthIdx).find(r => r.type === 'installment');
+        if (nextInstRow) fallbackInst = nextInstRow.installment;
+    }
+
+    return { paidCap: pc, paidInt: pi, remaining: rem, currentInstallment: fallbackInst };
   }, [simRes, currentMonthIdx]);
 
   const pcPercent = simRes && simRes.totalLoanAmount > 0 ? (progressData.paidCap / simRes.totalLoanAmount) * 100 : 0;
@@ -554,11 +562,11 @@ export default function App() {
             <div className="bg-white rounded-2xl border shadow-sm overflow-hidden flex flex-col h-[500px]">
               <div className="h-full overflow-y-auto w-full relative">
                  <table className="w-full text-sm text-left">
-                   <thead className="text-[10px] uppercase font-bold tracking-wider bg-slate-50 text-slate-500 sticky top-0 z-10 w-full shadow-sm">
+                    <thead className="text-[10px] uppercase font-bold tracking-wider bg-slate-50 text-slate-500 sticky top-0 z-10 w-full shadow-sm">
                      <tr>
-                       <th className="px-5 py-4">Lp.</th>
+                       <th className="px-5 py-4">Lp. (Opis)</th>
                        <th className="px-5 py-4">Data</th>
-                       <th className="px-5 py-4 text-right">Rata Total</th>
+                       <th className="px-5 py-4 text-right">Rata (Bank)</th>
                        <th className="px-5 py-4 text-right">Kapitał</th>
                        <th className="px-5 py-4 text-right">Odsetki</th>
                        <th className="px-5 py-4 text-right">Nadpłata</th>
@@ -568,10 +576,12 @@ export default function App() {
                    </thead>
                    <tbody>
                      {simRes?.schedule.map((r, i) => (
-                       <tr key={r.id} className={`border-b border-slate-100 ${i % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'} hover:bg-slate-100/50 transition-colors ${r.id === currentMonthIdx ? 'bg-amber-50 border-amber-200 border-y-2 relative' : ''}`}>
-                         <td className="px-5 py-3 text-slate-500 font-medium">{r.id}</td>
+                       <tr key={`${r.id}-${i}`} className={`border-b border-slate-100 ${r.type === 'overpayment' ? 'bg-teal-50/60' : i % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'} hover:bg-slate-100/50 transition-colors ${r.id === currentMonthIdx ? 'bg-amber-50 border-amber-200 border-y-2 relative' : ''}`}>
+                         <td className="px-5 py-3 text-slate-500 font-medium">
+                            {r.type === 'overpayment' ? 'Nadpłata' : r.id}
+                         </td>
                          <td className="px-5 py-3 text-slate-600">{(new Date(r.date)).toLocaleDateString('pl-PL')}</td>
-                         <td className="px-5 py-3 text-right font-bold text-slate-800">{formatMoney(r.installment)}</td>
+                         <td className="px-5 py-3 text-right font-bold text-slate-800">{r.type === 'overpayment' ? '-' : formatMoney(r.installment)}</td>
                          <td className="px-5 py-3 text-right text-emerald-600 font-medium">{formatMoney(r.capital)}</td>
                          <td className="px-5 py-3 text-right text-rose-500 font-medium">{formatMoney(r.interest)}</td>
                          <td className="px-5 py-3 text-right text-teal-600 font-medium">{formatMoney(r.overpayment)}</td>
